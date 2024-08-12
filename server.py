@@ -220,15 +220,12 @@ async def broadcast(message):
 async def handle_upload(request):
     reader = await request.multipart()
 
-    # 读取文件字段
     field = await reader.next()
     assert field.name == 'file'
     filename = field.filename
 
-    # 确保上传目录存在
     os.makedirs('send_files', exist_ok=True)
 
-    # 保存文件
     size = 0
     with open(os.path.join('send_files', filename), 'wb') as f:
         while True:
