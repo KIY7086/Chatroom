@@ -141,9 +141,9 @@ function connectWebSocket() {
             updateOnlineUsers(onlineUsers.length);
         } else if (data.type === 'history') {
             if (Array.isArray(data)) {
-                loadHistoryMessages(data);  // 确保传入的是数组
+                loadHistoryMessages(data);
             } else {
-                loadHistoryMessages([data]);  // 如果不是数组，将其包装为数组
+                loadHistoryMessages([data]);
             }
         } else {
             if (data.chunkIndex !== undefined && data.chunkTotal !== undefined) {
@@ -368,12 +368,12 @@ function toggleRecording() {
 function updateOnlineUsers(count) {
     const onlineUsersElement = document.getElementById('onlineUsers');
     if (onlineUsersElement) {
-        onlineUsersElement.textContent = `在线用户: ${count}`;
+        onlineUsersElement.textContent = `在线用户：${count}`;
     }
 }
 
 function showUserList() {
-    let userListHTML = '在线用户：<br>';
+    let userListHTML = '在线用户列表<br>';
     onlineUsers.forEach(user => {
         userListHTML += `${user}<br>`;
     });
@@ -444,13 +444,13 @@ function splitIntoChunks(data, chunkSize) {
 }
 
 function sendImage(base64Image) {
-    const chunks = splitIntoChunks(base64Image, 50000);  // 每个片段50KB
+    const chunks = splitIntoChunks(base64Image, 50000);
     chunks.forEach((chunk, index) => {
         socket.send(JSON.stringify({
             sender: currentUser,
             image: chunk,
-            chunkIndex: index,  // 当前片段的序号
-            chunkTotal: chunks.length,  // 总片段数量
+            chunkIndex: index,
+            chunkTotal: chunks.length,
             type: 'image'
         }));
     });
