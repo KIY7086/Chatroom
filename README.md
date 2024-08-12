@@ -11,4 +11,4 @@
 ### 食用方法
 下载源码，在server.py同目录下新建userdata.db数据库文件，然后运行server.py<br>
 出现`Running on http://localhost:18080`提示后可以在浏览器访问http://localhost:18080<br>
-如果没有反向代理服务可以将server.py的最后一行`host=`改成`localhost`即可使用http://server_ip:18080访问
+如果没有反向代理服务可以将server.py的最后一行`host=`改成`0.0.0.0`即可使用http://server_ip:18080访问
