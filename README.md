@@ -6,7 +6,7 @@
 1.普通文字消息<br>
 2.语音消息<br>
 3.图片消息（支持GIF动图）<br>
-4.发送文件（储存在服务器`send_files`目录下）
+4.发送文件（储存在服务器`saved_files`目录下）
 
 ### 食用方法
 下载源码，在server.py同目录下新建userdata.db数据库文件，然后运行server.py<br>
