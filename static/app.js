@@ -8,7 +8,31 @@ let messageQueue = [];
 let onlineUsers = [];
 const loadingIcon = '<i class="fas fa-spinner fa-spin"></i>';
 window.addEventListener('resize', adjustInputWidth);
-document.addEventListener('DOMContentLoaded', adjustInputWidth);
+
+document.addEventListener('DOMContentLoaded', () => {
+    const messageInput = document.getElementById('messageInput');
+    const chatHeader = document.getElementById('onlineUsers');
+    chatHeader.addEventListener('click', function() {
+        socket.send(JSON.stringify({type: 'get_user_list'}));
+        showUserList();
+    });
+    messageInput.addEventListener('keypress', handleEnterKey);
+    adjustInputWidth();
+    adjustAudioContainers();
+});
+
+function adjustAudioContainers() {
+    const audioContainers = document.querySelectorAll('.audioContainer');
+    audioContainers.forEach(container => {
+        const audio = container.querySelector('audio');
+        audio.addEventListener('loadedmetadata', () => {
+            const computedStyle = window.getComputedStyle(audio);
+            const audioWidth = parseFloat(computedStyle.width);
+            container.style.width = `${audioWidth}px`;
+        });
+    });
+}
+
 
 function adjustInputWidth() {
     const imageButton = document.getElementById('imageButton');
@@ -233,21 +257,21 @@ function displayMessage(data, isImmediate = false) {
         } else if (data.image) {
             contentHtml = `<div class="message-content"><img src="${data.image}" style="max-width: 100%; border-radius: 8px;"></div>`;
         } else if (data.audio) {
-            contentHtml = `<div class="message-content" style="padding-bottom: 1px;padding-top: 5px;padding-left:5px; padding-right:5px; border-radius:30px;"><audio src="${data.audio}" style="max-width: 100%" controls></audio></div>`;
+            contentHtml = `<div class="audioContainer"><audio src="${data.audio}" controls></audio></div>`;
         } else if (data.fileName) {
             console.log("FileName:", data.fileName);
             contentHtml = `<div class="message-content"><a href="/download/${data.fileName}" style="color: white;" download>[ 文件 ] ${data.fileName}</a></div>`;
         }
     } else {
         if (data.message) {
-            contentHtml = `<div class="message-content"><strong>${data.sender}:</strong> ${data.message}</div>`;
+            contentHtml = `<strong>${data.sender}:</strong><br><div class="message-content"> ${data.message}</div>`;
         } else if (data.image) {
-            contentHtml = `<div class="message-content"><strong>${data.sender}:</strong><br><img src="${data.image}" style="max-width: 100%; border-radius: 8px;"></div>`;
+            contentHtml = `<strong>${data.sender}:</strong><br><div class="message-content"><img src="${data.image}" style="max-width: 100%; border-radius: 8px;"></div>`;
         } else if (data.audio) {
-            contentHtml = `<div class="message-content" style="padding-bottom: 1px;padding-top: 6px;padding-left:5px; padding-right:5px; border-radius:14px 30px 30px 30px;"><strong style="margin-bottom:4px">&nbsp; ${data.sender}</strong><audio src="${data.audio}" style="max-width: 100%" controls></audio></div>`;
+            contentHtml = `<strong>${data.sender}:</strong><br><div class="audioContainer"><audio src="${data.audio}" controls></audio></div>`;
         } else if (data.fileName) {
             console.log("FileName:", data.fileName);
-            contentHtml = `<div class="message-content"><strong>${data.sender}:</strong> <a href="/download/${data.fileName}" style="color: black;" download>[ 文件 ] ${data.fileName}</a></div>`;
+            contentHtml = `<strong>${data.sender}:</strong><br><div class="message-content"><a href="/download/${data.fileName}" style="color: black;" download>[ 文件 ] ${data.fileName}</a></div>`;
         }
     }
 
@@ -436,11 +460,6 @@ function sendImage(base64Image) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    const messageInput = document.getElementById('messageInput');
-    messageInput.addEventListener('keypress', handleEnterKey);
-});
-
 function handleEnterKey(event) {
     if (event.key === 'Enter') {
         event.preventDefault();
@@ -467,14 +486,6 @@ window.onclick = function(event) {
 }
 
 document.getElementById('logoutBtn').addEventListener('click', logout);
-
-document.addEventListener('DOMContentLoaded', function() {
-    const chatHeader = document.getElementById('onlineUsers');
-    chatHeader.addEventListener('click', function() {
-        socket.send(JSON.stringify({type: 'get_user_list'}));
-        showUserList();
-    });
-});
 
 fetch('/check_session')
 .then(response => response.json())

@@ -48,7 +48,7 @@ body {
     width: 80%;
     max-width: 800px;
     background-color: #ffffff;
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     overflow: hidden;
 }
@@ -68,9 +68,15 @@ body {
     padding: 0;
 }
 .chat-messages {
+    font-size: 16px;
     height: 400px;
     padding: 20px;
     overflow-y: auto;
+}
+.chat-messages strong{
+    margin-left: 2px;
+    font-size: 14px;
+    color: #414141;
 }
 .message {
     margin-bottom: 15px;
@@ -78,7 +84,6 @@ body {
 }
 .message-content {
     padding: 9px 11px;
-    border-radius: 14px;
     display: inline-block;
 }
 .message-content a {
@@ -89,6 +94,7 @@ body {
     text-decoration: underline;
 }
 .received .message-content {
+    border-radius: 1.5px 10px 10px 10px;
     max-width: 70%;
     background-color: #f0f0f0;
 }
@@ -98,8 +104,33 @@ body {
     text-align: right;
 }
 .sent .message-content {
+    border-radius: 10px 1.5px 10px 10px;
     background-color: #0084ff;
     color: white;
+}
+.audioContainer{
+    display: inline-block;
+    margin-top: -22px;
+    padding-bottom: 0;
+    padding-top: 5px;
+    padding-left: 5px;
+    padding-right:5px;
+    transform: scale(0.65);
+}
+.sent .audioContainer{
+    background-color: #0084ff;
+    color: white;
+    border-radius: 40px 3px 40px 40px;
+    transform-origin: right bottom;
+}
+.received .audioContainer{
+    max-width: 70%;
+    background-color: #f0f0f0;
+    border-radius: 3px 32px 32px 32px;
+    transform-origin: left bottom;
+}
+audio{
+    max-width: 100%
 }
 .chat-input {
     padding: 15px;
@@ -109,6 +140,8 @@ body {
     flex-direction: column;
 }
 .chat-input textarea{
+    line-height: 1.5;
+    font-size: 12px;
     font-family: 'HarmonyOS Sans';
     margin-top: 10px;
     width: calc(100% - 20px);
