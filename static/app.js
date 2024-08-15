@@ -16,9 +16,16 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.send(JSON.stringify({type: 'get_user_list'}));
         showUserList();
     });
+    messageInput.addEventListener('keypress', handleEnterKey);
     adjustInputWidth();
     adjustAudioContainers();
 });
+
+function handleEnterKey(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+    }
+}
 
 function adjustAudioContainers() {
     const audioContainers = document.querySelectorAll('.audioContainer');
