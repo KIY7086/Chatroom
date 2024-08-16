@@ -22,4 +22,4 @@
 ### 食用方法
 下载源码，然后运行server.py<br>
 如果出错尝试新建data.db和meta.db数据库文件<br>
-出现`Running on http://0.0.0.0:18080`提示后可以在浏览器访问http://localhost:18080<br>
+出现`Running on http://0.0.0.0:18080`提示后可以在18080端口访问网站<br>
