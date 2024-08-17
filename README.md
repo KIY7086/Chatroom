@@ -10,7 +10,7 @@
 5.多聊天室
 
 ### 文件用途
-`/saved_files`用于储存上传的文件<br>
+`/uploads`用于储存上传的文件<br>
 `/static`用于储存静态文件（CSS，JS等）<br>
 `server.py`聊天室后端<br>
 `meta.db`储存用户名密码和聊天室<br>
