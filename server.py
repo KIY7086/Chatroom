@@ -12,11 +12,9 @@ DB_PATH_DATA = 'data.db'
 
 from datetime import datetime, timezone, timedelta
 
-
 def format_time():
     tz = timezone(timedelta(hours=8))
     return datetime.now(tz).strftime("[%Y-%m-%d %H:%M:%S CST]")
-
 
 class Database:
     def __init__(self, db_path):
@@ -34,7 +32,6 @@ class Database:
                 await db.commit()
                 return await cursor.fetchall()
 
-
 meta_db = Database(DB_PATH_META)
 data_db = Database(DB_PATH_DATA)
 
@@ -42,39 +39,35 @@ connected = {}
 online_users = set()
 message_fragments = {}
 
-
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
-
 
 async def register(request):
     data = await request.json()
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
-    room_number = data.get('roomNumber', '').strip()
 
-    if not username or not password or not room_number:
-        return web.json_response({"success": False, "message": "用户名、密码和房间号不能为空"})
+    if not username or not password:
+        return web.json_response({"success": False, "message": "用户名和密码不能为空"})
 
     hashed_password = hash_password(password)
 
     try:
-        await meta_db.execute("INSERT INTO users (username, password, room_number) VALUES (?, ?, ?)",
-                              (username, hashed_password, room_number))
+        await meta_db.execute("INSERT INTO users (username, password) VALUES (?, ?)",
+                              (username, hashed_password))
         return web.json_response({"success": True})
     except aiosqlite.IntegrityError:
         return web.json_response({"success": False, "message": "用户已存在！"})
-
 
 async def login(request):
     data = await request.json()
     username = data['username']
     password = hash_password(data['password'])
+    room_number = data.get('roomNumber', '1')  # Default to room '1' if not provided
 
-    result = await meta_db.execute("SELECT room_number FROM users WHERE username = ? AND password = ?",
+    result = await meta_db.execute("SELECT 1 FROM users WHERE username = ? AND password = ?",
                                    (username, password))
     if result:
-        room_number = result[0][0]
         session_id = secrets.token_urlsafe()
         expires = time.time() + 24 * 60 * 60
         await meta_db.execute("INSERT INTO sessions (session_id, username, room_number, expires) VALUES (?, ?, ?, ?)",
@@ -90,9 +83,8 @@ async def login(request):
     else:
         return web.json_response({"success": False, "message": "用户名或密码错误"})
 
-
 async def check_session(request):
-    session_id = request.cookies.get('session_id')
+    session_id = request.headers.get('Cookie', '').split('session_id=')[-1].split(';')[0]
     if session_id:
         result = await meta_db.execute(
             "SELECT username, room_number FROM sessions WHERE session_id = ? AND expires > ?",
@@ -101,7 +93,7 @@ async def check_session(request):
             username, room_number = result[0]
             room_name_result = await meta_db.execute("SELECT room_name FROM rooms WHERE room_number = ?",
                                                      (room_number,))
-            room_name = room_name_result[0][0]
+            room_name = room_name_result[0][0] if room_name_result else "聊天室"
             return web.json_response(
                 {"success": True, "username": username, "roomNumber": room_number, "roomName": room_name})
     return web.json_response({"success": False})

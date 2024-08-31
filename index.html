@@ -18,14 +18,14 @@
     <div id="loginForm" class="auth-form">
         <input type="text" id="loginUsername" placeholder="用户名">
         <input type="password" id="loginPassword" placeholder="密码">
+        <input type="text" id="loginRoomNumber" placeholder="房间号（选填）">
         <button onclick="login()">登录</button>
         <p>没有账号？<a href="#" onclick="showRegisterForm()">去注册</a></p>
     </div>
-
+    
     <div id="registerForm" class="auth-form hidden">
         <input type="text" id="registerUsername" placeholder="用户名">
         <input type="password" id="registerPassword" placeholder="密码">
-        <input type="text" id="registerRoomNumber" placeholder="房间号">
         <button onclick="register()">注册</button>
         <p>已经有了账号？<a href="#" onclick="showLoginForm()">去登录</a></p>
     </div>
