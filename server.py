@@ -1,13 +1,21 @@
+import hashlib
 import json
 import os
-import aiosqlite
-import hashlib
-from aiohttp import web
 import secrets
 import time
 
+import aiosqlite
+from aiohttp import web
+
 DB_PATH_META = 'meta.db'
 DB_PATH_DATA = 'data.db'
+
+from datetime import datetime, timezone, timedelta
+
+
+def format_time():
+    tz = timezone(timedelta(hours=8))
+    return datetime.now(tz).strftime("[%Y-%m-%d %H:%M:%S CST]")
 
 
 class Database:
@@ -125,9 +133,8 @@ async def websocket_handler(request):
                         if username and room_number:
                             connected[(username, room_number)] = ws
                             online_users.add((username, room_number))
-                            print(f"新用户登录：{username}，房间号：{room_number}")
+                            print(f"{format_time()} 用户：{username}，连接到房间：{room_number}")
                             await broadcast_user_list(room_number)
-
                             await data_db.execute(f"CREATE TABLE IF NOT EXISTS chat_{room_number} "
                                                   "(id INTEGER PRIMARY KEY, sender TEXT, message TEXT, image TEXT, audio TEXT, file_name TEXT, timestamp REAL)")
 
@@ -173,7 +180,6 @@ async def websocket_handler(request):
                         continue
 
                     if 'chunkIndex' in data and 'chunkTotal' in data:
-                        message_type = data.get('type')
                         chunk_index = data['chunkIndex']
                         chunk_total = data['chunkTotal']
                         if username not in message_fragments:
@@ -192,6 +198,9 @@ async def websocket_handler(request):
                                  full_message if message_type == 'audio' else None,
                                  timestamp))
 
+                            print(
+                                f"{format_time()} 用户：{username}，发送了{'图片' if message_type == 'image' else '语音'}")
+
                             await broadcast(json.dumps({
                                 'sender': username,
                                 message_type: full_message,
@@ -207,6 +216,8 @@ async def websocket_handler(request):
                             f"INSERT INTO chat_{room_number} (sender, file_name, timestamp) VALUES (?, ?, ?)",
                             (username, file_name, timestamp))
 
+                        print(f"{format_time()} 用户：{username}，发送了文件 {file_name}")
+
                         await broadcast(json.dumps({
                             'sender': username,
                             'fileName': file_name,
@@ -218,6 +229,8 @@ async def websocket_handler(request):
                         await data_db.execute(
                             f"INSERT INTO chat_{room_number} (sender, message, timestamp) VALUES (?, ?, ?)",
                             (username, message, timestamp))
+
+                        print(f"{format_time()} 用户：{username}，发送了消息：{message}")
 
                         await broadcast(json.dumps({
                             'sender': username,
@@ -239,7 +252,7 @@ async def websocket_handler(request):
                 del connected[(username, room_number)]
             if (username, room_number) in online_users:
                 online_users.remove((username, room_number))
-            print(f"用户断开连接：{username}，房间号：{room_number}")
+            print(f"{format_time()} 用户断开连接：{username}，房间号：{room_number}")
             await broadcast_user_list(room_number)
 
     return ws
@@ -311,7 +324,7 @@ async def init_db():
 
 async def download_file(request):
     file_name = request.match_info['file_name']
-    file_path = os.path.join('saved_files', file_name)
+    file_path = os.path.join('uploads', file_name)  # 修改为 uploads 目录
     if os.path.exists(file_path):
         return web.FileResponse(file_path)
     else:

@@ -1,12 +1,21 @@
-let socket, currentUser, currentRoom, lastMessageTime = 0, mediaRecorder, isRecording = false;
-let audioChunks = [], messageQueue = [], onlineUsers = [];
-const loadingIcon = '<i class="fas fa-spinner fa-spin"></i>';
+const chatApp = {
+    socket: null,
+    currentUser: null,
+    currentRoom: null,
+    lastMessageTime: 0,
+    mediaRecorder: null,
+    isRecording: false,
+    audioChunks: [],
+    messageQueue: [],
+    onlineUsers: [],
+    loadingIcon: '<i class="fas fa-spinner fa-spin"></i>'
+};
 
 document.addEventListener('DOMContentLoaded', initialize);
 
 function initialize() {
-    const messageInput = document.getElementById('messageInput');
-    const chatHeader = document.getElementById('onlineUsers');
+    const messageInput = getElementById('messageInput');
+    const chatHeader = getElementById('onlineUsers');
     chatHeader.addEventListener('click', requestUserList);
     messageInput.addEventListener('keypress', handleEnterKey);
     adjustAudioContainers();
@@ -15,7 +24,6 @@ function initialize() {
 function handleEnterKey(event) {
     if (event.key === 'Enter') {
         event.preventDefault();
-        sendMessage();
     }
 }
 
@@ -29,44 +37,43 @@ function adjustAudioContainers() {
 }
 
 function showLoginForm() {
-    toggleVisibility('loginForm', true);
-    toggleVisibility('registerForm', false);
+    toggleVisibilityById('loginForm', true);
+    toggleVisibilityById('registerForm', false);
 }
 
 function showRegisterForm() {
-    toggleVisibility('loginForm', false);
-    toggleVisibility('registerForm', true);
+    toggleVisibilityById('loginForm', false);
+    toggleVisibilityById('registerForm', true);
 }
 
 function showChatRoom() {
-    ['loginForm', 'registerForm'].forEach(id => toggleVisibility(id, false));
-    ['chatRoom', 'logoutBtn', 'onlineUsers'].forEach(id => toggleVisibility(id, true));
-    document.getElementById('chatroomTitle').addEventListener('click', editRoomName);
+    ['loginForm', 'registerForm'].forEach(id => toggleVisibilityById(id, false));
+    ['chatRoom', 'logoutBtn', 'onlineUsers'].forEach(id => toggleVisibilityById(id, true));
+    getElementById('chatroomTitle').addEventListener('click', editRoomName);
 }
 
 async function login() {
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
+    const username = getElementById('loginUsername').value.trim();
+    const password = getElementById('loginPassword').value.trim();
 
     if (!username || !password) {
-        showModal("用户名和密码不能为空");
-        return;
+        return showModal("用户名和密码不能为空");
     }
 
     try {
         const response = await fetch('/login', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
         });
 
-        const data = await response.json();
-        if (data.success) {
-            currentUser = username;
-            document.cookie = `session_id=${data.session_id}; max-age=${24*60*60}; path=/;`;
+        const responseData = await response.json();
+        if (responseData.success) {
+            chatApp.currentUser = username;
+            document.cookie = `session_id=${responseData.session_id}; max-age=${24*60*60}; path=/;`;
             window.location.reload();
         } else {
-            showModal('登录失败：' + data.message);
+            showModal('登录失败：' + responseData.message);
         }
     } catch (error) {
         console.error('登录失败:', error);
@@ -75,32 +82,31 @@ async function login() {
 }
 
 function updateChatroomTitle(roomName) {
-    document.getElementById('chatroomTitle').innerText = roomName;
+    getElementById('chatroomTitle').innerText = roomName;
 }
 
 async function register() {
-    const username = document.getElementById('registerUsername').value.trim();
-    const password = document.getElementById('registerPassword').value.trim();
-    const roomNumber = document.getElementById('registerRoomNumber').value.trim();
+    const username = getElementById('registerUsername').value.trim();
+    const password = getElementById('registerPassword').value.trim();
+    const roomNumber = getElementById('registerRoomNumber').value.trim();
 
     if (!username || !password || !roomNumber) {
-        showModal('用户名、密码和房间号不能为空');
-        return;
+        return showModal('用户名、密码和房间号不能为空');
     }
 
     try {
         const response = await fetch('/register', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password, roomNumber})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, roomNumber })
         });
 
-        const data = await response.json();
-        if (data.success) {
+        const responseData = await response.json();
+        if (responseData.success) {
             showModal('注册成功！请登录');
             showLoginForm();
         } else {
-            showModal('注册失败：' + data.message);
+            showModal('注册失败：' + responseData.message);
         }
     } catch (error) {
         console.error('Error:', error);
@@ -109,11 +115,16 @@ async function register() {
 }
 
 async function logout() {
-    const response = await fetch('/logout', { method: 'POST' });
-    const data = await response.json();
-    if (data.success) {
-        document.cookie = 'session_id=; max-age=0; path=/;';
-        location.reload();
+    try {
+        const response = await fetch('/logout', { method: 'POST' });
+        const responseData = await response.json();
+        if (responseData.success) {
+            document.cookie = 'session_id=; max-age=0; path=/;';
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Logout failed:', error);
+        showModal('注销失败，请稍后再试');
     }
 }
 
@@ -122,35 +133,35 @@ function connectWebSocket() {
     const wsUrl = protocol + window.location.host + '/ws';
     console.log('Attempting to connect to WebSocket:', wsUrl);
 
-    socket = new WebSocket(wsUrl);
+    chatApp.socket = new WebSocket(wsUrl);
 
-    socket.onopen = () => {
+    chatApp.socket.onopen = () => {
         console.log('WebSocket connection established');
-        socket.send(JSON.stringify({
+        chatApp.socket.send(JSON.stringify({
             type: 'connect',
-            username: currentUser,
-            roomNumber: currentRoom
+            username: chatApp.currentUser,
+            roomNumber: chatApp.currentRoom
         }));
     };
 
-    socket.onmessage = handleSocketMessage;
-    socket.onerror = handleSocketError;
-    socket.onclose = handleSocketClose;
+    chatApp.socket.onmessage = handleSocketMessage;
+    chatApp.socket.onerror = handleSocketError;
+    chatApp.socket.onclose = handleSocketClose;
 }
 
 function handleSocketMessage(event) {
     console.log('Received message:', event.data);
-    const data = JSON.parse(event.data);
-    switch (data.type) {
+    const responseData = JSON.parse(event.data);
+    switch (responseData.type) {
         case 'user_list':
-            onlineUsers = data.users;
-            updateOnlineUsers(onlineUsers.length);
+            chatApp.onlineUsers = responseData.users;
+            updateOnlineUsers(chatApp.onlineUsers.length);
             break;
         case 'history':
-            loadHistoryMessages(Array.isArray(data) ? data : [data]);
+            loadHistoryMessages(Array.isArray(responseData) ? responseData : [responseData]);
             break;
         default:
-            handleChunkedMessage(data);
+            handleChunkedMessage(responseData);
     }
 }
 
@@ -165,14 +176,14 @@ function handleSocketClose(event) {
 }
 
 function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
+    const messageInput = getElementById('messageInput');
     const message = messageInput.value.trim();
     if (message) {
-        socket.send(JSON.stringify({
-            sender: currentUser,
+        chatApp.socket.send(JSON.stringify({
+            sender: chatApp.currentUser,
             type: 'text',
             message: message,
-            roomNumber: currentRoom
+            roomNumber: chatApp.currentRoom
         }));
         messageInput.value = '';
     }
@@ -189,18 +200,21 @@ async function sendFile(file) {
     const formData = new FormData();
     formData.append('file', file);
 
+    console.log('Uploading file:', file);
+
     try {
         const response = await fetch('/upload', { method: 'POST', body: formData });
-        const data = await response.json();
-        if (data.success) {
-            socket.send(JSON.stringify({
-                sender: currentUser,
-                fileName: file.name,
+        const responseData = await response.json();
+
+        if (responseData.status === 'success') {
+            chatApp.socket.send(JSON.stringify({
+                sender: chatApp.currentUser,
+                fileName: responseData.filename,
                 type: 'file',
-                roomNumber: currentRoom
+                roomNumber: chatApp.currentRoom
             }));
         } else {
-            console.error('File upload failed:', data.message);
+            console.error('File upload failed:', responseData.message);
         }
     } catch (error) {
         console.error('Error:', error);
@@ -209,20 +223,20 @@ async function sendFile(file) {
 
 function displayMessage(data, isImmediate = false) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${data.sender === currentUser ? 'sent' : 'received'}`;
+    messageDiv.className = `message ${data.sender === chatApp.currentUser ? 'sent' : 'received'}`;
 
-    if (data.timestamp - lastMessageTime > 600) {
+    if (data.timestamp - chatApp.lastMessageTime > 600) {
         const timeElement = document.createElement('div');
         timeElement.className = 'timestamp';
         timeElement.textContent = new Date(data.timestamp * 1000).toLocaleString(undefined, {
             year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
         timeElement.style.textAlign = 'center';
-        document.getElementById('chatMessages').appendChild(timeElement);
+        getElementById('chatMessages').appendChild(timeElement);
     }
 
     let contentHtml = '';
-    if (data.sender === currentUser) {
+    if (data.sender === chatApp.currentUser) {
         if (data.message) {
             contentHtml = `<div class="message-content">${data.message}</div>`;
         } else if (data.image) {
@@ -247,8 +261,8 @@ function displayMessage(data, isImmediate = false) {
     }
 
     messageDiv.innerHTML = contentHtml;
-    document.getElementById('chatMessages').appendChild(messageDiv);
-    lastMessageTime = data.timestamp;
+    getElementById('chatMessages').appendChild(messageDiv);
+    chatApp.lastMessageTime = data.timestamp;
 }
 
 function loadHistoryMessages(messages) {
@@ -266,62 +280,57 @@ function loadHistoryMessages(messages) {
 }
 
 function toggleRecording() {
-    const recordButton = document.getElementById('recordButton');
+    const recordButton = getElementById('recordButton');
 
-    if (!isRecording) {
+    if (!chatApp.isRecording) {
         startRecording();
         recordButton.classList.add('recording');
     } else {
         stopRecording();
         recordButton.classList.remove('recording');
     }
-    isRecording = !isRecording;
+    chatApp.isRecording = !chatApp.isRecording;
 }
 
 function updateOnlineUsers(count) {
-    document.getElementById('onlineUsers').textContent = `在线用户：${count}`;
+    getElementById('onlineUsers').textContent = `在线用户：${count}`;
 }
 
 function showUserList() {
-    showModal(`在线用户列表<br>${onlineUsers.join('<br>')}`);
+    showModal(`在线用户列表<br>${chatApp.onlineUsers.join('<br>')}`);
 }
 
 async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        chatApp.mediaRecorder = new MediaRecorder(stream);
 
-    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-    mediaRecorder.onstop = sendAudioMessage;
+        chatApp.mediaRecorder.ondataavailable = event => chatApp.audioChunks.push(event.data);
+        chatApp.mediaRecorder.onstop = sendAudioMessage;
 
-    mediaRecorder.start();
+        chatApp.mediaRecorder.start();
+    } catch (error) {
+        console.error('Error starting recording:', error);
+        showModal('无法启动录音，请检查权限或设备');
+    }
 }
 
 function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
+    if (chatApp.mediaRecorder && chatApp.mediaRecorder.state !== 'inactive') {
+        chatApp.mediaRecorder.stop();
     }
 }
 
 function sendAudio(base64Audio) {
-    const chunks = splitIntoChunks(base64Audio, 50000);
-    chunks.forEach((chunk, index) => {
-        socket.send(JSON.stringify({
-            sender: currentUser,
-            audio: chunk,
-            chunkIndex: index,
-            chunkTotal: chunks.length,
-            type: 'audio',
-            roomNumber: currentRoom
-        }));
-    });
+    sendChunkedData('audio', base64Audio);
 }
 
 function sendAudioMessage() {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    const audioBlob = new Blob(chatApp.audioChunks, { type: 'audio/webm' });
     const reader = new FileReader();
     reader.readAsDataURL(audioBlob);
     reader.onloadend = () => sendAudio(reader.result);
-    audioChunks = [];
+    chatApp.audioChunks = [];
 }
 
 function handleImageUpload(event) {
@@ -333,57 +342,58 @@ function handleImageUpload(event) {
     }
 }
 
-function splitIntoChunks(data, chunkSize) {
-    const chunks = [];
-    for (let i = 0; i < data.length; i += chunkSize) {
-        chunks.push(data.slice(i, i + chunkSize));
-    }
-    return chunks;
-}
-
-function sendImage(base64Image) {
-    const chunks = splitIntoChunks(base64Image, 50000);
+function sendChunkedData(type, data, chunkSize = 50000) {
+    const chunks = splitIntoChunks(data, chunkSize);
     chunks.forEach((chunk, index) => {
-        socket.send(JSON.stringify({
-            sender: currentUser,
-            image: chunk,
+        chatApp.socket.send(JSON.stringify({
+            sender: chatApp.currentUser,
+            [type]: chunk,
             chunkIndex: index,
             chunkTotal: chunks.length,
-            type: 'image',
-            roomNumber: currentRoom
+            type: type,
+            roomNumber: chatApp.currentRoom
         }));
     });
 }
 
+function sendImage(base64Image) {
+    sendChunkedData('image', base64Image);
+}
+
 function showModal(message) {
-    const modal = document.getElementById('modal');
-    document.getElementById('modalMessage').innerHTML = message;
+    const modal = getElementById('modal');
+    getElementById('modalMessage').innerHTML = message;
     modal.style.display = 'block';
 }
 
-document.querySelector('.close').onclick = () => document.getElementById('modal').style.display = 'none';
+document.querySelector('.close').onclick = () => getElementById('modal').style.display = 'none';
 window.onclick = event => {
-    if (event.target == document.getElementById('modal')) {
-        document.getElementById('modal').style.display = 'none';
+    if (event.target === getElementById('modal')) {
+        getElementById('modal').style.display = 'none';
     }
 }
 
-document.getElementById('logoutBtn').addEventListener('click', logout);
+getElementById('logoutBtn').addEventListener('click', logout);
 
-fetch('/check_session')
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            currentUser = data.username;
-            currentRoom = data.roomNumber;
+async function checkSession() {
+    try {
+        const response = await fetch('/check_session');
+        const responseData = await response.json();
+        if (responseData.success) {
+            chatApp.currentUser = responseData.username;
+            chatApp.currentRoom = responseData.roomNumber;
             showChatRoom();
             connectWebSocket();
-            document.getElementById('chatroomTitle').textContent = data.roomName;
+            getElementById('chatroomTitle').textContent = responseData.roomName;
         }
-    });
+    } catch (error) {
+        console.error('Session check failed:', error);
+        showModal('会话检查失败，请刷新页面重试');
+    }
+}
 
 function editRoomName() {
-    const chatroomTitle = document.getElementById('chatroomTitle');
+    const chatroomTitle = getElementById('chatroomTitle');
     const input = document.createElement('input');
     input.type = 'text';
     input.value = chatroomTitle.textContent;
@@ -397,13 +407,11 @@ function editRoomName() {
             const newName = input.value.trim();
             if (newName) {
                 chatroomTitle.textContent = newName;
-                socket.send(JSON.stringify({
+                chatApp.socket.send(JSON.stringify({
                     type: 'update_room_name',
-                    roomNumber: currentRoom,
+                    roomNumber: chatApp.currentRoom,
                     newName: newName
                 }));
-            } else {
-                chatroomTitle.textContent = chatroomTitle.textContent;
             }
             input.remove();
             chatroomTitle.classList.remove('hidden');
@@ -416,30 +424,44 @@ function editRoomName() {
     });
 }
 
-function toggleVisibility(id, isVisible) {
-    document.getElementById(id).classList.toggle('hidden', !isVisible);
+function toggleVisibilityById(id, isVisible) {
+    getElementById(id).classList.toggle('hidden', !isVisible);
 }
 
 function requestUserList() {
-    socket.send(JSON.stringify({type: 'get_user_list'}));
+    chatApp.socket.send(JSON.stringify({ type: 'get_user_list' }));
     showUserList();
 }
 
 function handleChunkedMessage(data) {
     if (data.chunkIndex !== undefined && data.chunkTotal !== undefined) {
-        if (!messageQueue[data.sender]) {
-            messageQueue[data.sender] = {};
+        if (!chatApp.messageQueue[data.sender]) {
+            chatApp.messageQueue[data.sender] = {};
         }
-        if (!messageQueue[data.sender][data.type]) {
-            messageQueue[data.sender][data.type] = new Array(data.chunkTotal).fill(null);
+        if (!chatApp.messageQueue[data.sender][data.type]) {
+            chatApp.messageQueue[data.sender][data.type] = new Array(data.chunkTotal).fill(null);
         }
-        messageQueue[data.sender][data.type][data.chunkIndex] = data[data.type];
-        if (messageQueue[data.sender][data.type].every(chunk => chunk !== null)) {
-            const fullMessage = messageQueue[data.sender][data.type].join('');
+        chatApp.messageQueue[data.sender][data.type][data.chunkIndex] = data[data.type];
+        if (chatApp.messageQueue[data.sender][data.type].every(chunk => chunk !== null)) {
+            const fullMessage = chatApp.messageQueue[data.sender][data.type].join('');
             displayMessage({ sender: data.sender, [data.type]: fullMessage, type: data.type, timestamp: data.timestamp });
-            delete messageQueue[data.sender][data.type];
+            delete chatApp.messageQueue[data.sender][data.type];
         }
     } else {
         displayMessage(data, true);
     }
 }
+
+function splitIntoChunks(data, chunkSize) {
+    const chunks = [];
+    for (let i = 0; i < data.length; i += chunkSize) {
+        chunks.push(data.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+function getElementById(id) {
+    return document.getElementById(id);
+}
+
+checkSession();
