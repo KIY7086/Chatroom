@@ -40,6 +40,7 @@ data_db = Database(DB_PATH_DATA)
 connected = {}
 online_users = set()
 message_fragments = {}
+user_last_online = {}
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -54,12 +55,26 @@ async def register(request):
 
     hashed_password = hash_password(password)
 
-    try:
-        await meta_db.execute("INSERT INTO users (username, password) VALUES (?, ?)",
-                              (username, hashed_password))
-        return web.json_response({"success": True})
-    except aiosqlite.IntegrityError:
-        return web.json_response({"success": False, "message": "用户已存在！"})
+    async with aiosqlite.connect(DB_PATH_META) as db:
+        user_exists = await db.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+        if await user_exists.fetchone():
+            return web.json_response({"success": False, "message": "用户已存在！"})
+
+        await db.execute("BEGIN TRANSACTION")
+        try:
+            await db.execute("INSERT INTO users (username, password) VALUES (?, ?)",
+                             (username, hashed_password))
+            
+            await db.execute("INSERT INTO user_rooms (username, room_number) VALUES (?, ?)",
+                             (username, "1"))
+            
+            await db.commit()
+            print(f"{format_time()} 新用户 {username} 注册成功并被添加到公共聊天室")
+            return web.json_response({"success": True})
+        except Exception as e:
+            await db.rollback()
+            print(f"{format_time()} 注册用户 {username} 时发生错误: {str(e)}")
+            return web.json_response({"success": False, "message": "注册失败，请稍后重试"})
 
 async def login(request):
     data = await request.json()
@@ -183,6 +198,7 @@ async def websocket_handler(request):
                         if username and room_number:
                             connected[(username, room_number)] = ws
                             online_users.add((username, room_number))
+                            user_last_online[username] = time.time()
                             print(f"{format_time()} 用户：{username}，连接到房间：{room_number}")
                             await broadcast_user_list(room_number)
                             await data_db.execute(f"CREATE TABLE IF NOT EXISTS chat_{room_number} "
@@ -202,11 +218,15 @@ async def websocket_handler(request):
                                 }
                                 await ws.send_json(history_message)
                         continue
-
+                        
+                    
                     if data.get('type') == 'get_user_list':
+                        users = await get_room_users(room_number)
+                        online_count = sum(1 for user in users if user['is_online'])
                         await ws.send_json({
                             'type': 'user_list',
-                            'users': [user for user, room in online_users if room == room_number]
+                            'users': users,
+                            'onlineCount': online_count
                         })
                         continue
 
@@ -302,15 +322,51 @@ async def websocket_handler(request):
                 del connected[(username, room_number)]
             if (username, room_number) in online_users:
                 online_users.remove((username, room_number))
+            user_last_online[username] = time.time()
             print(f"{format_time()} 用户断开连接：{username}，房间号：{room_number}")
             await broadcast_user_list(room_number)
 
     return ws
 
+async def get_room_users(room_number):
+    users = []
+    current_time = time.time()
+    
+    room_users = await meta_db.execute(
+        "SELECT username FROM user_rooms WHERE room_number = ?", (room_number,)
+    )
+    
+    for user in room_users:
+        username = user[0]
+        is_online = (username, room_number) in online_users
+        last_online = user_last_online.get(username, 0)
+        
+        if is_online:
+            status = "在线"
+        else:
+            time_diff = current_time - last_online
+            if last_online == 0 or time_diff > 23 * 3600:
+                status = "很久之前"
+            elif time_diff < 300:
+                status = "刚刚"
+            elif time_diff < 3600:
+                status = f"{int(time_diff / 60)}分钟前"
+            else:
+                status = f"{int(time_diff / 3600)}小时前"
+        
+        users.append({
+            "username": username,
+            "status": status,
+            "is_online": is_online
+        })
+    
+    return users
+
 async def broadcast_user_list(room_number):
+    online_count = sum(1 for (user, room) in online_users if room == room_number)
     user_list = {
-        'type': 'user_list',
-        'users': [user for user, room in online_users if room == room_number]
+        'type': 'user_count',
+        'onlineCount': online_count
     }
     await broadcast(json.dumps(user_list), room_number)
 
