@@ -327,6 +327,9 @@ audio{
         background-color: #0084ff;
         color: white;
     }
+    .message-content strong{
+        color: #b9b9b9;
+    }
     .audioContainer {
         background-color: #3a3b3c;
     }
