@@ -16,12 +16,31 @@ const chatApp = {
     currentView: null
 };
 
+const Toast = Swal.mixin({
+  toast: true,
+  position: 'top-end',
+  showConfirmButton: false,
+  timer: 3000,
+  timerProgressBar: true,
+  didOpen: (toast) => {
+    toast.addEventListener('mouseenter', Swal.stopTimer)
+    toast.addEventListener('mouseleave', Swal.resumeTimer)
+  }
+});
+
+function showToast(message, icon = 'info') {
+  Toast.fire({
+    icon: icon,
+    title: message
+  });
+}
+
 document.addEventListener('DOMContentLoaded', initialize);
 
 function initialize() {
     const messageInput = getElementById('messageInput');
     const chatHeader = getElementById('onlineUsers');
-    chatHeader.addEventListener('click', requestUserList);
+    chatHeader.addEventListener('click', showUserList);
     messageInput.addEventListener('keypress', handleEnterKey);
     adjustAudioContainers();
 
@@ -50,7 +69,6 @@ async function checkSession() {
         if (responseData.success) {
             chatApp.currentUser = responseData.username;
             
-            // 如果有保存的房间号，尝试加入该房间
             const savedRoomNumber = localStorage.getItem(STORAGE_KEY_ROOM);
             if (savedRoomNumber) {
                 const room = responseData.rooms.find(room => room.roomNumber === savedRoomNumber);
@@ -108,9 +126,9 @@ async function login() {
     const password = getElementById('loginPassword').value.trim();
 
     if (!username || !password) {
-        return showModal("用户名和密码不能为空");
+        return showToast("用户名和密码不能为空", 'warning');
     }
-
+    
     try {
         const response = await fetch('/login', {
             method: 'POST',
@@ -125,11 +143,11 @@ async function login() {
             localStorage.setItem(STORAGE_KEY_USERNAME, username);
             showRoomList(responseData.rooms);
         } else {
-            showModal('登录失败：' + responseData.message);
+            showToast('登录失败：' + responseData.message, 'error');
         }
     } catch (error) {
         console.error('登录失败:', error);
-        showModal('登录失败，请稍后再试');
+        showToast('登录失败，请稍后再试', 'error');
     }
 }
 
@@ -138,7 +156,7 @@ async function register() {
     const password = getElementById('registerPassword').value.trim();
 
     if (!username || !password) {
-        return showModal('用户名和密码不能为空');
+        return showToast('用户名和密码不能为空', 'warning');
     }
 
     try {
@@ -150,14 +168,14 @@ async function register() {
 
         const responseData = await response.json();
         if (responseData.success) {
-            showModal('注册成功！请登录');
+            showToast('注册成功！请登录', 'success');
             showLoginForm();
         } else {
-            showModal('注册失败：' + responseData.message);
+            showToast('注册失败：' + responseData.message, 'error');
         }
     } catch (error) {
         console.error('Error:', error);
-        showModal('注册过程中发生错误，请稍后重试');
+        l('注册过程中发生错误，请稍后重试');
     }
 }
 
@@ -225,6 +243,7 @@ function showRoomList(rooms) {
     toggleVisibilityById('chatRoom', false);
     toggleVisibilityById('roomList', true);
     toggleVisibilityById('backToRoomListBtn', false);
+    toggleVisibilityById('onlineUsers', false);
     toggleVisibilityById('logoutBtn', true);
 
     getElementById('chatMessages').innerHTML = '';
@@ -266,11 +285,11 @@ async function fetchRoomList() {
 
         } else {
             console.log("无法获取用户房间列表，请稍后再试");
-            showModal('无法获取用户房间列表，请稍后再试');
+            showToast('无法获取用户房间列表，请稍后再试','error');
         }
     } catch (error) {
         console.error('获取用户房间列表失败:', error);
-        showModal('获取用户房间列表失败，请稍后再试');
+        showToast('获取用户房间列表失败，请稍后再试','error');
     }
 }
 
@@ -284,6 +303,7 @@ async function joinRoom(roomNumber) {
     toggleVisibilityById('chatRoom', true);
     toggleVisibilityById('backToRoomListBtn', true);
     toggleVisibilityById('logoutBtn', true);
+    toggleVisibilityById('onlineUsers', true);
 
     chatApp.currentRoom = roomNumber;
     localStorage.setItem(STORAGE_KEY_ROOM, roomNumber);
@@ -305,7 +325,7 @@ async function addRoom() {
     const { value: formValues } = await Swal.fire({
         title: '添加房间',
         html: `
-            <input id="swal-input1" class="swal2-input" placeholder="请输入房间号" 
+            <input id="swal-input1" class="swal2-input" placeholder="请输入房间代号" 
                    style="text-align: left; width: calc(100% - 1rem); margin: 0 0 15px 0; overflow: hidden;">
             <input id="swal-input2" class="swal2-input" placeholder="请输入房间密码（可选）" 
                    style="text-align: left; width: calc(100% - 1rem); margin: 0; overflow: hidden;">
@@ -332,13 +352,8 @@ async function addRoom() {
     console.log("用户尝试添加房间：", roomNumber);
 
     if (!roomNumber) {
-        console.log("房间号为空，无法添加房间");
-        Swal.fire({
-            title: '错误',
-            text: '房间号不能为空',
-            icon: 'error',
-            heightAuto: false
-        });
+        console.log("房间代号为空，无法添加房间");
+        showToast('房间代号不能为空', 'error');
         return;
     }
 
@@ -358,31 +373,16 @@ async function addRoom() {
 
         if (responseData.success) {
             console.log("成功添加房间：", responseData.roomNumber);
-            Swal.fire({
-                title: '成功',
-                text: '房间已成功添加到列表',
-                icon: 'success',
-                heightAuto: false
-            });
+            showToast('房间已成功添加到列表', 'success');
             
             fetchRoomList();
         } else {
             console.log("添加房间失败：", responseData.message);
-            Swal.fire({
-                title: '失败',
-                text: '添加房间失败：' + responseData.message,
-                icon: 'error',
-                heightAuto: false
-            });
+            showToast('添加房间失败：' + responseData.message, 'error');
         }
     } catch (error) {
         console.error('添加房间失败:', error);
-        Swal.fire({
-            title: '错误',
-            text: '添加房间失败，请稍后再试',
-            icon: 'error',
-            heightAuto: false
-        });
+        showToast('添加房间失败，请稍后再试', 'error');
     }
 }
 
@@ -455,9 +455,12 @@ function handleSocketMessage(event) {
     console.log('Received message:', event.data);
     const responseData = JSON.parse(event.data);
     switch (responseData.type) {
+        case 'user_count':
+            updateOnlineUsers(responseData.onlineCount);
+            break;
         case 'user_list':
-            chatApp.onlineUsers = responseData.users;
-            updateOnlineUsers(chatApp.onlineUsers.length);
+            updateUserList(responseData.users);
+            updateOnlineUsers(responseData.onlineCount);
             break;
         case 'history':
             loadHistoryMessages(Array.isArray(responseData) ? responseData : [responseData]);
@@ -469,7 +472,7 @@ function handleSocketMessage(event) {
 
 function handleSocketError(error) {
     console.error('WebSocket error:', error);
-    showModal('WebSocket 连接错误，请刷新页面重试');
+    showToast('WebSocket 连接错误，请刷新页面重试', 'error');
 }
 
 function handleSocketClose() {
@@ -599,8 +602,30 @@ function updateOnlineUsers(count) {
     getElementById('onlineUsers').textContent = `在线用户：${count}`;
 }
 
+function updateUserList(users) {
+    console.log('显示用户列表');
+    const userListHtml = users.map(user => {
+        const statusColor = user.is_online ? 'green' : 'red';
+        const statusText = user.is_online ? '在线' : `最近上线：${user.status}`;
+        return `<div style="text-align: left; width: 100%;">${user.username} <span style="color: ${statusColor};">${statusText}</span></div>`;
+    }).join('');
+
+    Swal.fire({
+        title: '用户列表',
+        html: userListHtml,
+        confirmButtonText: '确定',
+        heightAuto: false
+    });
+}
+
 function showUserList() {
-    showModal(`在线用户列表<br>${chatApp.onlineUsers.join('<br>')}`);
+    console.log('尝试获取用户列表');
+    if (chatApp.socket && chatApp.socket.readyState === WebSocket.OPEN) {
+        chatApp.socket.send(JSON.stringify({ type: 'get_user_list' }));
+    } else {
+        console.error('WebSocket is not connected');
+        showToast('无法获取用户列表，请稍后再试', 'error');
+    }
 }
 
 async function startRecording() {
@@ -614,7 +639,7 @@ async function startRecording() {
         chatApp.mediaRecorder.start();
     } catch (error) {
         console.error('Error starting recording:', error);
-        showModal('无法启动录音，请检查权限或设备');
+        showToast('无法启动录音，请检查权限或设备', 'error');
     }
 }
 
@@ -681,16 +706,6 @@ async function getRoomName(roomNumber) {
     } catch (error) {
         console.error('获取房间名称时发生错误:', error);
     }
-}
-
-function showModal(message) {
-    Swal.fire({
-        title: '提示',
-        text: message,
-        icon: 'info',
-        confirmButtonText: '确定',
-        heightAuto: false
-    });
 }
 
 getElementById('logoutBtn').addEventListener('click', logout);
