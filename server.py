@@ -6,6 +6,8 @@ import time
 
 import aiosqlite
 from aiohttp import web
+from aiohttp_session import setup, get_session, session_middleware
+from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
 DB_PATH_META = 'meta.db'
 DB_PATH_DATA = 'data.db'
@@ -63,48 +65,104 @@ async def login(request):
     data = await request.json()
     username = data['username']
     password = hash_password(data['password'])
-    room_number = data.get('roomNumber', '1')  # Default to room '1' if not provided
 
     result = await meta_db.execute("SELECT 1 FROM users WHERE username = ? AND password = ?",
                                    (username, password))
     if result:
-        session_id = secrets.token_urlsafe()
-        expires = time.time() + 24 * 60 * 60
-        await meta_db.execute("INSERT INTO sessions (session_id, username, room_number, expires) VALUES (?, ?, ?, ?)",
-                              (session_id, username, room_number, expires))
-
-        room_name_result = await meta_db.execute("SELECT room_name FROM rooms WHERE room_number = ?", (room_number,))
-        room_name = room_name_result[0][0] if room_name_result else "聊天室"
-        if not room_name_result:
-            await meta_db.execute("INSERT INTO rooms (room_number, room_name) VALUES (?, ?)",
-                                  (room_number, room_name))
-
-        return web.json_response({"success": True, "session_id": session_id, "roomName": room_name})
+        session = await get_session(request)
+        session['username'] = username
+        
+        rooms = await meta_db.execute("""
+            SELECT r.room_number, r.room_name 
+            FROM user_rooms ur
+            JOIN rooms r ON ur.room_number = r.room_number
+            WHERE ur.username = ?
+        """, (username,))
+        room_list = [{"roomNumber": row[0], "roomName": row[1]} for row in rooms]
+        
+        return web.json_response({
+            "success": True,
+            "username": username,
+            "rooms": room_list
+        })
     else:
         return web.json_response({"success": False, "message": "用户名或密码错误"})
 
+async def add_room(request):
+    data = await request.json()
+    room_number = data.get('roomNumber')
+    room_name = data.get('roomName', f"房间 {room_number}")
+    room_password = data.get('roomPassword', '')
+    username = data.get('username')
+
+    print(f"{format_time()} 用户 {username} 请求添加房间：{room_number}")
+
+    try:
+        room_result = await meta_db.execute("SELECT room_name, room_password FROM rooms WHERE room_number = ?", (room_number,))
+        if room_result:
+            stored_room_name, stored_password = room_result[0]
+            if stored_password == hash_password(room_password) or (stored_password == '' and room_password == ''):
+                try:
+                    await meta_db.execute("INSERT INTO user_rooms (username, room_number) VALUES (?, ?)", (username, room_number))
+                    print(f"{format_time()} 用户 {username} 成功加入已存在的房间 {room_number}")
+                    return web.json_response({"success": True, "roomNumber": room_number, "roomName": stored_room_name})
+                except aiosqlite.IntegrityError:
+                    print(f"{format_time()} 用户 {username} 已经在房间 {room_number} 中")
+                    return web.json_response({"success": True, "roomNumber": room_number, "roomName": stored_room_name, "message": "已在房间中"})
+            else:
+                print(f"{format_time()} 用户 {username} 尝试加入房间 {room_number} 失败：密码错误")
+                return web.json_response({"success": False, "message": "密码错误"})
+        else:
+            print(f"{format_time()} 创建新房间 {room_number}")
+            hashed_password = hash_password(room_password) if room_password else ''
+            await meta_db.execute("INSERT INTO rooms (room_number, room_name, room_password) VALUES (?, ?, ?)",
+                                  (room_number, room_name, hashed_password))
+            await meta_db.execute("INSERT INTO user_rooms (username, room_number) VALUES (?, ?)", (username, room_number))
+            print(f"{format_time()} 用户 {username} 成功创建并加入新房间 {room_number}")
+            return web.json_response({"success": True, "roomNumber": room_number, "roomName": room_name})
+
+    except Exception as e:
+        print(f"{format_time()} 添加房间时发生错误：{str(e)}")
+        import traceback
+        traceback.print_exc()
+        return web.json_response({"success": False, "message": f"添加房间失败：{str(e)}"})
+
+
 async def check_session(request):
-    session_id = request.headers.get('Cookie', '').split('session_id=')[-1].split(';')[0]
-    if session_id:
-        result = await meta_db.execute(
-            "SELECT username, room_number FROM sessions WHERE session_id = ? AND expires > ?",
-            (session_id, time.time()))
-        if result:
-            username, room_number = result[0]
-            room_name_result = await meta_db.execute("SELECT room_name FROM rooms WHERE room_number = ?",
-                                                     (room_number,))
-            room_name = room_name_result[0][0] if room_name_result else "聊天室"
-            return web.json_response(
-                {"success": True, "username": username, "roomNumber": room_number, "roomName": room_name})
+    session = await get_session(request)
+    username = session.get('username')
+    if username:
+        rooms = await meta_db.execute("""
+            SELECT r.room_number, r.room_name 
+            FROM user_rooms ur
+            JOIN rooms r ON ur.room_number = r.room_number
+            WHERE ur.username = ?
+        """, (username,))
+        room_list = [{"roomNumber": row[0], "roomName": row[1]} for row in rooms]
+        return web.json_response({
+            "success": True, 
+            "username": username,
+            "rooms": room_list
+        })
     return web.json_response({"success": False})
 
 
 async def logout(request):
-    session_id = request.cookies.get('session_id')
-    if session_id:
-        await meta_db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+    session = await get_session(request)
+    session.clear()
     return web.json_response({"success": True})
+    
 
+async def get_room_name(request):
+    data = await request.json()
+    room_number = data.get('roomNumber')
+    if room_number:
+        room_name_result = await meta_db.execute("SELECT room_name FROM rooms WHERE room_number = ?",
+                                                 (room_number,))
+        if room_name_result:
+            room_name = room_name_result[0][0]
+            return web.json_response({"success": True, "roomName": room_name})
+    return web.json_response({"success": False, "message": "房间不存在"})
 
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
@@ -249,7 +307,6 @@ async def websocket_handler(request):
 
     return ws
 
-
 async def broadcast_user_list(room_number):
     user_list = {
         'type': 'user_list',
@@ -257,12 +314,10 @@ async def broadcast_user_list(room_number):
     }
     await broadcast(json.dumps(user_list), room_number)
 
-
 async def broadcast(message, room_number):
     for (user, room), user_ws in connected.items():
         if room == room_number and not user_ws.closed:
             await user_ws.send_str(message)
-
 
 async def handle_upload(request):
     reader = await request.multipart()
@@ -286,50 +341,78 @@ async def handle_upload(request):
 
     return web.json_response({'status': 'success', 'filename': filename, 'size': size})
 
-
 async def init_db():
     async with aiosqlite.connect(DB_PATH_META) as db:
         await db.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE,
-            password TEXT,
-            room_number TEXT
+            password TEXT
         );
         ''')
         await db.execute('''
         CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
             username TEXT,
-            room_number TEXT,
             expires REAL
         );
         ''')
         await db.execute('''
         CREATE TABLE IF NOT EXISTS rooms (
             room_number TEXT PRIMARY KEY,
-            room_name TEXT
+            room_name TEXT,
+            room_password TEXT
+        );
+        ''')
+        await db.execute('''
+        CREATE TABLE IF NOT EXISTS user_rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            room_number TEXT,
+            UNIQUE(username, room_number)
         );
         ''')
         await db.commit()
 
+        room_check = await db.execute("SELECT 1 FROM rooms WHERE room_number = '1'")
+        if not await room_check.fetchone():
+            await db.execute("INSERT INTO rooms (room_number, room_name, room_password) VALUES ('1', '公共聊天室', '')")
+            await db.commit()
+
+async def get_user_rooms(request):
+    data = await request.json()
+    username = data.get('username')
+
+    try:
+        rooms = await meta_db.execute("""
+            SELECT r.room_number, r.room_name 
+            FROM user_rooms ur
+            JOIN rooms r ON ur.room_number = r.room_number
+            WHERE ur.username = ?
+        """, (username,))
+        room_list = [{"roomNumber": row[0], "roomName": row[1]} for row in rooms]
+        return web.json_response({"success": True, "rooms": room_list})
+    except Exception as e:
+        print(f"获取用户房间列表失败: {str(e)}")
+        return web.json_response({"success": False, "message": "获取用户房间列表失败"})
 
 async def download_file(request):
     file_name = request.match_info['file_name']
-    file_path = os.path.join('uploads', file_name)  # 修改为 uploads 目录
+    file_path = os.path.join('uploads', file_name)
     if os.path.exists(file_path):
         return web.FileResponse(file_path)
     else:
         return web.Response(status=404, text="File not found")
 
-
 async def index(request):
     return web.FileResponse('./index.html')
-
 
 async def init_app():
     await init_db()
     app = web.Application()
+    
+    secret_key = secrets.token_bytes(32)
+    setup(app, EncryptedCookieStorage(secret_key))
 
     app.router.add_get('/', index)
     app.add_routes([
@@ -344,9 +427,11 @@ async def init_app():
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/download/{file_name}', download_file)
     app.router.add_post('/upload', handle_upload)
+    app.router.add_post('/get_user_rooms', get_user_rooms)
+    app.router.add_post('/add_room', add_room)
+    app.router.add_post('/get_room_name', get_room_name)
 
     return app
-
 
 if __name__ == '__main__':
     web.run_app(init_app(), port=18080)

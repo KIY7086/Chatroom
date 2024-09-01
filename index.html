@@ -4,13 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>聊天室</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
 </head>
 <body>
 <div class="container">
     <div class="chat-header">
-        <h2 id="chatroomTitle">聊天室</h2>
+        <h2 id="chatroomTitle">登录</h2>
+        <button id="backToRoomListBtn" class="hidden" onclick="showRoomList()"><i class="fas fa-arrow-left"></i></button>
         <button id="logoutBtn" class="hidden" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
         <div id="onlineUsers" class="hidden">在线用户: 0</div>
     </div>
@@ -18,16 +20,20 @@
     <div id="loginForm" class="auth-form">
         <input type="text" id="loginUsername" placeholder="用户名">
         <input type="password" id="loginPassword" placeholder="密码">
-        <input type="text" id="loginRoomNumber" placeholder="房间号（选填）">
         <button onclick="login()">登录</button>
         <p>没有账号？<a href="#" onclick="showRegisterForm()">去注册</a></p>
     </div>
-    
+
     <div id="registerForm" class="auth-form hidden">
         <input type="text" id="registerUsername" placeholder="用户名">
         <input type="password" id="registerPassword" placeholder="密码">
         <button onclick="register()">注册</button>
         <p>已经有了账号？<a href="#" onclick="showLoginForm()">去登录</a></p>
+    </div>
+
+    <div id="roomList" class="hidden">
+        <button id="addRoomBtn" onclick="addRoom()"><i class="fas fa-plus"></i> 添加房间</button>
+        <div id="rooms" class="room-list"></div>
     </div>
 
     <div id="chatRoom" class="hidden">
@@ -43,13 +49,6 @@
             </div>
             <textarea id="messageInput" placeholder="说点什么..."></textarea>
         </div>
-    </div>
-</div>
-
-<div id="modal" class="modal">
-    <div class="modal-content">
-        <span class="close">&times;</span>
-        <p id="modalMessage"></p>
     </div>
 </div>
 
