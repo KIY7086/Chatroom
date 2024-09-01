@@ -234,7 +234,7 @@ audio{
     font-size: 20px;
     cursor: pointer;
 }
-.timestamp {
+.timestam{
     margin: 10px 0;
     font-size: 12px;
     color: #888;
@@ -351,6 +351,12 @@ audio{
     }
     .auth-form button {
         background-color: #0084ff;
+    }
+    .auth-form p {
+        color: #e4e6eb;
+    }
+    .auth-form a {
+        color: #d0adf0;
     }
     .room-item {
         background-color: #3a3b3c;

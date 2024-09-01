@@ -28,6 +28,30 @@ const Toast = Swal.mixin({
   }
 });
 
+function loadTheme() {
+    const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (isDarkMode) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/static/dark.css';
+        document.head.appendChild(link);
+    }
+}
+
+function listenForThemeChanges() {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+        if (e.matches) {
+            loadTheme();
+        } else {
+            const darkStylesheet = document.querySelector('link[href$$="dark.css"]');
+            if (darkStylesheet) {
+                darkStylesheet.remove();
+            }
+        }
+    });
+}
+
 function showToast(message, icon = 'info') {
   Toast.fire({
     icon: icon,
@@ -40,6 +64,10 @@ document.addEventListener('DOMContentLoaded', initialize);
 function initialize() {
     const messageInput = getElementById('messageInput');
     const chatHeader = getElementById('onlineUsers');
+    
+    loadTheme();
+    listenForThemeChanges();
+    
     chatHeader.addEventListener('click', showUserList);
     messageInput.addEventListener('keypress', handleEnterKey);
     adjustAudioContainers();
