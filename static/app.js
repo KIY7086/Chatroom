@@ -12,7 +12,8 @@ const chatApp = {
     audioChunks: [],
     messageQueue: [],
     onlineUsers: [],
-    loadingIcon: '<i class="fas fa-spinner fa-spin"></i>'
+    loadingIcon: '<i class="fas fa-spinner fa-spin"></i>',
+    currentView: null
 };
 
 document.addEventListener('DOMContentLoaded', initialize);
@@ -25,38 +26,46 @@ function initialize() {
     adjustAudioContainers();
 
     const lastUsername = localStorage.getItem(STORAGE_KEY_USERNAME);
-    const lastRoom = localStorage.getItem(STORAGE_KEY_ROOM);
     if (lastUsername) {
         getElementById('loginUsername').value = lastUsername;
     }
-    if (lastRoom) {
-        getElementById('loginRoomNumber').value = lastRoom;
-    }
 
-    checkLocalSession();
+    checkSession();
 }
 
-async function checkLocalSession() {
-    const sessionId = localStorage.getItem(STORAGE_KEY_SESSION);
-    if (sessionId) {
-        try {
-            const response = await fetch('/check_session', {
-                headers: {
-                    'Cookie': `session_id=${sessionId}`
+function updateChatroomTitle(roomName) {
+    console.log("Updating chatroom title to:", roomName);
+    const titleElement = getElementById('chatroomTitle');
+    titleElement.innerText = roomName;
+    console.log("Chatroom title updated:", titleElement.innerText);
+}
+
+
+async function checkSession() {
+    try {
+        const response = await fetch('/check_session', {
+            credentials: 'include'
+        });
+        const responseData = await response.json();
+        if (responseData.success) {
+            chatApp.currentUser = responseData.username;
+            
+            // 如果有保存的房间号，尝试加入该房间
+            const savedRoomNumber = localStorage.getItem(STORAGE_KEY_ROOM);
+            if (savedRoomNumber) {
+                const room = responseData.rooms.find(room => room.roomNumber === savedRoomNumber);
+                if (room) {
+                    chatApp.currentRoom = savedRoomNumber;
+                    joinRoom(savedRoomNumber);
+                    return;
                 }
-            });
-            const responseData = await response.json();
-            if (responseData.success) {
-                chatApp.currentUser = responseData.username;
-                chatApp.currentRoom = responseData.roomNumber;
-                showChatRoom();
-                connectWebSocket();
-                updateChatroomTitle(responseData.roomName);
-                return;
             }
-        } catch (error) {
-            console.error('Session check failed:', error);
+            
+            showRoomList(responseData.rooms);
+            return;
         }
+    } catch (error) {
+        console.error('Session check failed:', error);
     }
     showLoginForm();
 }
@@ -77,11 +86,13 @@ function adjustAudioContainers() {
 }
 
 function showLoginForm() {
+    updateChatroomTitle('登录');
     toggleVisibilityById('loginForm', true);
     toggleVisibilityById('registerForm', false);
 }
 
 function showRegisterForm() {
+    updateChatroomTitle('注册');
     toggleVisibilityById('loginForm', false);
     toggleVisibilityById('registerForm', true);
 }
@@ -95,7 +106,6 @@ function showChatRoom() {
 async function login() {
     const username = getElementById('loginUsername').value.trim();
     const password = getElementById('loginPassword').value.trim();
-    const roomNumber = getElementById('loginRoomNumber').value.trim() || '1';
 
     if (!username || !password) {
         return showModal("用户名和密码不能为空");
@@ -105,21 +115,15 @@ async function login() {
         const response = await fetch('/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password, roomNumber })
+            body: JSON.stringify({ username, password }),
+            credentials: 'include'
         });
 
         const responseData = await response.json();
         if (responseData.success) {
-            chatApp.currentUser = username;
-            chatApp.currentRoom = roomNumber;
-            
-            localStorage.setItem(STORAGE_KEY_SESSION, responseData.session_id);
+            chatApp.currentUser = responseData.username;
             localStorage.setItem(STORAGE_KEY_USERNAME, username);
-            localStorage.setItem(STORAGE_KEY_ROOM, roomNumber);
-
-            showChatRoom();
-            connectWebSocket();
-            updateChatroomTitle(responseData.roomName);
+            showRoomList(responseData.rooms);
         } else {
             showModal('登录失败：' + responseData.message);
         }
@@ -128,7 +132,6 @@ async function login() {
         showModal('登录失败，请稍后再试');
     }
 }
-
 
 async function register() {
     const username = getElementById('registerUsername').value.trim();
@@ -158,33 +161,261 @@ async function register() {
     }
 }
 
-function updateChatroomTitle(roomName) {
-    getElementById('chatroomTitle').innerText = roomName;
-}
-
 async function logout() {
     try {
-        const response = await fetch('/logout', { method: 'POST' });
+        await fetch('/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+    } catch (error) {
+        console.error('Logout notification failed:', error);
+    }
+
+    localStorage.removeItem(STORAGE_KEY_ROOM);
+    localStorage.removeItem('currentView');
+    chatApp.currentUser = null;
+    chatApp.currentRoom = null;
+    chatApp.currentView = null;
+
+    cleanupWebSocket();
+
+    window.location.href = '/';
+}
+
+
+function editRoomName() {
+    const chatroomTitle = getElementById('chatroomTitle');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = chatroomTitle.textContent;
+    input.classList.add('edit-input');
+    chatroomTitle.classList.add('hidden');
+    chatroomTitle.parentNode.insertBefore(input, chatroomTitle.nextSibling);
+    input.focus();
+
+    input.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            const newName = input.value.trim();
+            if (newName) {
+                chatroomTitle.textContent = newName;
+                chatApp.socket.send(JSON.stringify({
+                    type: 'update_room_name',
+                    roomNumber: chatApp.currentRoom,
+                    newName: newName
+                }));
+            }
+            input.remove();
+            chatroomTitle.classList.remove('hidden');
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        chatroomTitle.classList.remove('hidden');
+        input.remove();
+    });
+}
+
+function showRoomList(rooms) {
+    cleanupWebSocket();
+    getElementById('chatroomTitle').removeEventListener('click', editRoomName);
+    updateChatroomTitle('选择聊天室');
+    console.log("显示房间选择界面");
+    toggleVisibilityById('loginForm', false);
+    toggleVisibilityById('registerForm', false);
+    toggleVisibilityById('chatRoom', false);
+    toggleVisibilityById('roomList', true);
+    toggleVisibilityById('backToRoomListBtn', false);
+    toggleVisibilityById('logoutBtn', true);
+
+    getElementById('chatMessages').innerHTML = '';
+
+    chatApp.currentView = 'roomList';
+    localStorage.setItem('currentView', 'roomList');
+
+    const roomsContainer = getElementById('rooms');
+    roomsContainer.innerHTML = '';
+
+    fetchRoomList()
+}
+
+async function fetchRoomList() {
+    console.log("请求获取用户房间列表");
+
+    try {
+        const response = await fetch('/get_user_rooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: chatApp.currentUser })
+        });
         const responseData = await response.json();
+        console.log("获取用户房间列表响应:", responseData);
+
         if (responseData.success) {
-            localStorage.removeItem(STORAGE_KEY_SESSION);
-            location.reload();
+            const roomsContainer = getElementById('rooms');
+            roomsContainer.innerHTML = '';
+
+            responseData.rooms.forEach(room => {
+                console.log("显示房间：", room.roomName);
+
+                const roomDiv = document.createElement('div');
+                roomDiv.className = 'room-item';
+                roomDiv.innerText = room.roomName;
+                roomDiv.onclick = () => joinRoom(room.roomNumber);
+                roomsContainer.appendChild(roomDiv);
+            });
+
+        } else {
+            console.log("无法获取用户房间列表，请稍后再试");
+            showModal('无法获取用户房间列表，请稍后再试');
         }
     } catch (error) {
-        console.error('Logout failed:', error);
-        showModal('注销失败，请稍后再试');
+        console.error('获取用户房间列表失败:', error);
+        showModal('获取用户房间列表失败，请稍后再试');
+    }
+}
+
+async function joinRoom(roomNumber) {
+    console.log("用户尝试加入房间：", roomNumber);
+
+    cleanupWebSocket();
+
+    toggleVisibilityById('roomList', false);
+    toggleVisibilityById('loginForm', false);
+    toggleVisibilityById('chatRoom', true);
+    toggleVisibilityById('backToRoomListBtn', true);
+    toggleVisibilityById('logoutBtn', true);
+
+    chatApp.currentRoom = roomNumber;
+    localStorage.setItem(STORAGE_KEY_ROOM, roomNumber);
+
+    chatApp.currentView = 'chatRoom';
+    localStorage.setItem('currentView', 'chatRoom');
+
+    updateChatroomTitle("加载中...");
+
+    connectWebSocket();
+
+    getElementById('chatroomTitle').addEventListener('click', editRoomName);
+    console.log("房间加入过程完成");
+
+    getElementById('chatMessages').innerHTML = '';
+}
+
+async function addRoom() {
+    const { value: formValues } = await Swal.fire({
+        title: '添加房间',
+        html: `
+            <input id="swal-input1" class="swal2-input" placeholder="请输入房间号" 
+                   style="text-align: left; width: calc(100% - 1rem); margin: 0 0 15px 0; overflow: hidden;">
+            <input id="swal-input2" class="swal2-input" placeholder="请输入房间密码（可选）" 
+                   style="text-align: left; width: calc(100% - 1rem); margin: 0; overflow: hidden;">
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        heightAuto: false,
+        preConfirm: () => {
+            return [
+                document.getElementById('swal-input1').value,
+                document.getElementById('swal-input2').value
+            ]
+        }
+    });
+
+    if (!formValues) {
+        console.log("用户取消了房间添加");
+        return;
+    }
+
+    const [roomNumber, roomPassword] = formValues;
+    console.log("用户尝试添加房间：", roomNumber);
+
+    if (!roomNumber) {
+        console.log("房间号为空，无法添加房间");
+        Swal.fire({
+            title: '错误',
+            text: '房间号不能为空',
+            icon: 'error',
+            heightAuto: false
+        });
+        return;
+    }
+
+    try {
+        const response = await fetch('/add_room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                roomNumber, 
+                roomPassword,
+                username: chatApp.currentUser
+            })
+        });
+
+        const responseData = await response.json();
+        console.log("添加房间请求响应：", responseData);
+
+        if (responseData.success) {
+            console.log("成功添加房间：", responseData.roomNumber);
+            Swal.fire({
+                title: '成功',
+                text: '房间已成功添加到列表',
+                icon: 'success',
+                heightAuto: false
+            });
+            
+            fetchRoomList();
+        } else {
+            console.log("添加房间失败：", responseData.message);
+            Swal.fire({
+                title: '失败',
+                text: '添加房间失败：' + responseData.message,
+                icon: 'error',
+                heightAuto: false
+            });
+        }
+    } catch (error) {
+        console.error('添加房间失败:', error);
+        Swal.fire({
+            title: '错误',
+            text: '添加房间失败，请稍后再试',
+            icon: 'error',
+            heightAuto: false
+        });
+    }
+}
+
+async function getRoomName(roomNumber) {
+    try {
+        const response = await fetch('/get_room_name', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ roomNumber: roomNumber })
+        });
+        const data = await response.json();
+        if (data.success) {
+            updateChatroomTitle(data.roomName);
+        } else {
+            console.error('获取房间名称失败:', data.message);
+        }
+    } catch (error) {
+        console.error('获取房间名称时发生错误:', error);
     }
 }
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
     const wsUrl = protocol + window.location.host + '/ws';
-    console.log('Attempting to connect to WebSocket:', wsUrl);
+    console.log('尝试连接到 WebSocket:', wsUrl);
 
     chatApp.socket = new WebSocket(wsUrl);
 
     chatApp.socket.onopen = () => {
-        console.log('WebSocket connection established');
+        console.log('WebSocket 连接已建立');
+        getRoomName(chatApp.currentRoom);
         chatApp.socket.send(JSON.stringify({
             type: 'connect',
             username: chatApp.currentUser,
@@ -195,6 +426,29 @@ function connectWebSocket() {
     chatApp.socket.onmessage = handleSocketMessage;
     chatApp.socket.onerror = handleSocketError;
     chatApp.socket.onclose = handleSocketClose;
+}
+
+function cleanupWebSocket() {
+    console.log("开始清理 WebSocket 连接");
+
+    if (chatApp.socket) {
+        if (chatApp.socket.readyState === WebSocket.OPEN) {
+            console.log("关闭现有的 WebSocket 连接");
+            chatApp.socket.close();
+        } else {
+            console.log("WebSocket 连接不处于打开状态，无需关闭");
+        }
+        chatApp.socket = null;
+    } else {
+        console.log("没有活动的 WebSocket 连接需要清理");
+    }
+
+    chatApp.currentRoom = null;
+    chatApp.lastMessageTime = 0;
+    chatApp.messageQueue = [];
+    chatApp.onlineUsers = [];
+
+    console.log("WebSocket 清理完成");
 }
 
 function handleSocketMessage(event) {
@@ -218,9 +472,10 @@ function handleSocketError(error) {
     showModal('WebSocket 连接错误，请刷新页面重试');
 }
 
-function handleSocketClose(event) {
-    console.log('WebSocket connection closed:', event.code, event.reason);
-    showModal('WebSocket 连接已关闭，请刷新页面重新连接');
+function handleSocketClose() {
+    console.log("WebSocket 连接已关闭");
+    updateChatroomTitle('选择聊天室');
+    setTimeout(connectWebSocket, 5000);
 }
 
 function sendMessage() {
@@ -408,52 +663,37 @@ function sendImage(base64Image) {
     sendChunkedData('image', base64Image);
 }
 
-function showModal(message) {
-    const modal = getElementById('modal');
-    getElementById('modalMessage').innerHTML = message;
-    modal.style.display = 'block';
-}
-
-document.querySelector('.close').onclick = () => getElementById('modal').style.display = 'none';
-window.onclick = event => {
-    if (event.target === getElementById('modal')) {
-        getElementById('modal').style.display = 'none';
+async function getRoomName(roomNumber) {
+    try {
+        const response = await fetch('/get_room_name', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ roomNumber: roomNumber })
+        });
+        const data = await response.json();
+        if (data.success) {
+            updateChatroomTitle(data.roomName);
+        } else {
+            console.error('获取房间名称失败:', data.message);
+        }
+    } catch (error) {
+        console.error('获取房间名称时发生错误:', error);
     }
 }
 
-getElementById('logoutBtn').addEventListener('click', logout);
-
-function editRoomName() {
-    const chatroomTitle = getElementById('chatroomTitle');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = chatroomTitle.textContent;
-    input.classList.add('edit-input');
-    chatroomTitle.classList.add('hidden');
-    chatroomTitle.parentNode.insertBefore(input, chatroomTitle.nextSibling);
-    input.focus();
-
-    input.addEventListener('keypress', function(event) {
-        if (event.key === 'Enter') {
-            const newName = input.value.trim();
-            if (newName) {
-                chatroomTitle.textContent = newName;
-                chatApp.socket.send(JSON.stringify({
-                    type: 'update_room_name',
-                    roomNumber: chatApp.currentRoom,
-                    newName: newName
-                }));
-            }
-            input.remove();
-            chatroomTitle.classList.remove('hidden');
-        }
-    });
-
-    input.addEventListener('blur', () => {
-        chatroomTitle.classList.remove('hidden');
-        input.remove();
+function showModal(message) {
+    Swal.fire({
+        title: '提示',
+        text: message,
+        icon: 'info',
+        confirmButtonText: '确定',
+        heightAuto: false
     });
 }
+
+getElementById('logoutBtn').addEventListener('click', logout);
 
 function toggleVisibilityById(id, isVisible) {
     getElementById(id).classList.toggle('hidden', !isVisible);
@@ -495,4 +735,6 @@ function getElementById(id) {
     return document.getElementById(id);
 }
 
-checkSession();
+function toggleVisibilityById(id, isVisible) {
+    document.getElementById(id).classList.toggle('hidden', !isVisible);
+}
