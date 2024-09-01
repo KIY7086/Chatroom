@@ -304,3 +304,59 @@ audio{
     align-items: center;
     justify-content: center;
 }
+@media (prefers-color-scheme: dark) {
+    body {
+        background-color: #18191a;
+    }
+    .container {
+        background-color: #242526;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+    .chat-header {
+        background-color: #3a3b3c;
+        color: #e4e6eb;
+    }
+    .chat-messages {
+        color: #e4e6eb;
+    }
+    .received .message-content {
+        background-color: #3a3b3c;
+        color: #e4e6eb;
+    }
+    .sent .message-content {
+        background-color: #0084ff;
+        color: white;
+    }
+    .audioContainer {
+        background-color: #3a3b3c;
+    }
+    .received .audioContainer {
+        background-color: #3a3b3c;
+    }
+    .chat-input {
+        background-color: #242526;
+        border-top: 1px solid #3a3b3c;
+    }
+    .chat-input textarea {
+        background-color: #3a3b3c;
+        color: #e4e6eb;
+    }
+    .chat-input button {
+        background-color: #0084ff;
+    }
+    .auth-form input {
+        background-color: #3a3b3c;
+        color: #e4e6eb;
+        border: 1px solid #4a4b4c;
+    }
+    .auth-form button {
+        background-color: #0084ff;
+    }
+    .room-item {
+        background-color: #3a3b3c;
+        color: #e4e6eb;
+    }
+    .room-item:hover {
+        background-color: #4a4b4c;
+    }
+}

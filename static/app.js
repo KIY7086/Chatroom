@@ -195,9 +195,9 @@ async function logout() {
     chatApp.currentRoom = null;
     chatApp.currentView = null;
 
-    cleanupWebSocket();
+    await cleanupWebSocket();
 
-    window.location.href = '/';
+    window.location.reload();
 }
 
 
@@ -233,11 +233,11 @@ function editRoomName() {
     });
 }
 
-function showRoomList(rooms) {
-    cleanupWebSocket();
+async function showRoomList(rooms) {
+    await cleanupWebSocket();
     getElementById('chatroomTitle').removeEventListener('click', editRoomName);
     updateChatroomTitle('选择聊天室');
-    console.log("显示房间选择界面");
+
     toggleVisibilityById('loginForm', false);
     toggleVisibilityById('registerForm', false);
     toggleVisibilityById('chatRoom', false);
@@ -254,7 +254,7 @@ function showRoomList(rooms) {
     const roomsContainer = getElementById('rooms');
     roomsContainer.innerHTML = '';
 
-    fetchRoomList()
+    fetchRoomList();
 }
 
 async function fetchRoomList() {
@@ -296,7 +296,7 @@ async function fetchRoomList() {
 async function joinRoom(roomNumber) {
     console.log("用户尝试加入房间：", roomNumber);
 
-    cleanupWebSocket();
+    await cleanupWebSocket();
 
     toggleVisibilityById('roomList', false);
     toggleVisibilityById('loginForm', false);
@@ -428,13 +428,16 @@ function connectWebSocket() {
     chatApp.socket.onclose = handleSocketClose;
 }
 
-function cleanupWebSocket() {
+async function cleanupWebSocket() {
     console.log("开始清理 WebSocket 连接");
 
     if (chatApp.socket) {
         if (chatApp.socket.readyState === WebSocket.OPEN) {
             console.log("关闭现有的 WebSocket 连接");
             chatApp.socket.close();
+            await new Promise((resolve) => {
+                chatApp.socket.onclose = resolve;
+            });
         } else {
             console.log("WebSocket 连接不处于打开状态，无需关闭");
         }
@@ -450,6 +453,7 @@ function cleanupWebSocket() {
 
     console.log("WebSocket 清理完成");
 }
+
 
 function handleSocketMessage(event) {
     console.log('Received message:', event.data);
