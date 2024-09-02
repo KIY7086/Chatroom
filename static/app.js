@@ -34,7 +34,7 @@ function loadTheme() {
     if (isDarkMode) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = '/static/dark.css';
+        link.href = 'https://cdn.jsdelivr.net/npm/@sweetalert2/theme-dark/dark.css';
         document.head.appendChild(link);
     }
 }
